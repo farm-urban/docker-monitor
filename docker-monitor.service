@@ -1,0 +1,14 @@
+[Unit]
+Description=Docker Health Monitor and Email Alert
+Wants=network-online.target
+After=network.target network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/infrastructure/docker-monitor
+ExecStart=/opt/infrastructure/docker-monitor/venv/bin/python /opt/infrastructure/docker-monitor/monitor_and_alert.py
+StandardOutput=append:/opt/infrastructure/docker-monitor/monitor.log
+StandardError=append:/opt/infrastructure/docker-monitor/monitor.log
+User=fu
+Group=fu
+
