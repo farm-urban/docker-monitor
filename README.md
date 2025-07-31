@@ -1,13 +1,19 @@
 Script to send alerts when containers aren't healthy
 
-To setup:
+## Python infrastructure
+
+```
 sudo apt-get install  python3-venv
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+```
 
+## Systemd:
 
-Systemd:
+Edit `docker-monitor.env` and `docker-monitor.service` to set location of directory if not `/opt/docker-monitor`
+
+```
 sudo cp docker-monitor.service  /etc/systemd/system/docker-monitor.service
 sudo cp docker-monitor.timer /etc/systemd/system/docker-monitor.timer
 
@@ -16,20 +22,20 @@ sudo systemctl daemon-reload
 
 sudo systemctl enable docker-monitor.timer
 sudo systemctl start docker-monitor.timer
+```
 
+## On google workspace
 
-On google workspace
 1.  Create new project in Admin console
-2. Goto "Enabled APIs and services" -> "+Enable API and services"
-3. Enable Gmail API
-4. Create credentials
-   * Application data
-   * Create service account
-   * Click "Done" (no permissions required)
-5. Edit service account
-   * Keys -> Add Key -> Create new Key
-   * Details - get Client Id 
-6. Add domain wide delegation
-   * https://admin.google.com/ac/owl/domainwidedelegation
-   * add Client Id from 5
-
+2.  Goto "Enabled APIs and services" -> "+Enable API and services"
+3.  Enable Gmail API
+4.  Create credentials
+    - Application data
+    - Create service account
+    - Click "Done" (no permissions required)
+5.  Edit service account
+    - Keys -> Add Key -> Create new Key
+    - Details - get Client Id
+6.  Add domain wide delegation
+    - https://admin.google.com/ac/owl/domainwidedelegation
+    - add Client Id from 5
