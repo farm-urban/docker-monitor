@@ -83,14 +83,22 @@ def get_container_health(container_name):
         return "unknown"
 
 
-def send_alert(service, container_name, status, alert_type="ALERT"):
-    """Send an email alert about the container's status."""
+def send_alerts_grouped(service, alerts):
+    """Send a single email with all container alerts."""
+    if not alerts:
+        return
+
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[{alert_type} {SERVER}] '{container_name}' is {status}"
-    body = (
-        f"The Docker container `{container_name}` is in a **{status.upper()}** state as of {now}.\n\n"
-        "Please check the logs and take necessary action."
-    )
+    subject = f"[DOCKER MONITOR {SERVER}] {len(alerts)} container(s) changed state"
+
+    body_lines = [f"State changes detected on server `{SERVER}` as of {now}:\n"]
+
+    for alert in alerts:
+        line = f"- {alert['type']}: `{alert['container']}` is now **{alert['status'].upper()}**"
+        body_lines.append(line)
+
+    body_lines.append("\nPlease check logs or containers as needed.")
+    body = "\n".join(body_lines)
 
     message = MIMEText(body)
     message["to"] = ALERT_EMAIL
@@ -100,7 +108,7 @@ def send_alert(service, container_name, status, alert_type="ALERT"):
     raw_message = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
     response = service.users().messages().send(userId="me", body=raw_message).execute()
 
-    logging.info("Alert sent for '%s' (status: %s)", container_name, status)
+    logging.info("Grouped alert email sent for %d container(s).", len(alerts))
     logging.debug("Gmail API response: %s", response)
 
 
@@ -127,6 +135,7 @@ def main():
     service = authenticate_gmail_service()
     last_statuses = load_statuses()
     new_statuses = {}
+    alerts = []
 
     for container in CONTAINER_NAMES:
         status = get_container_health(container)
@@ -134,29 +143,34 @@ def main():
 
         last_status = last_statuses.get(container)
 
-        # First-time startup: unknown previous status
         if last_status is None:
             if status in UNHEALTHY_STATES:
-                send_alert(service, container, status, alert_type="ALERT")
+                alerts.append(
+                    {"container": container, "status": status, "type": "ALERT"}
+                )
             else:
                 logging.info(
                     "Startup: '%s' is healthy (%s), no alert sent.", container, status
                 )
 
-        # Status changed
         elif status != last_status:
             if status in UNHEALTHY_STATES:
-                send_alert(service, container, status, alert_type="ALERT")
+                alert_type = "ALERT"
             elif last_status in UNHEALTHY_STATES:
-                send_alert(service, container, status, alert_type="RECOVERY")
+                alert_type = "RECOVERY"
             else:
-                send_alert(service, container, status, alert_type="STATE CHANGE")
+                alert_type = "STATE CHANGE"
 
+            alerts.append(
+                {"container": container, "status": status, "type": alert_type}
+            )
         else:
             logging.debug("No alert sent: '%s' unchanged (%s)", container, status)
 
         new_statuses[container] = status
 
+    # Send a single grouped email
+    send_alerts_grouped(service, alerts)
     save_statuses(new_statuses)
 
     unhealthy_now = {c: s for c, s in new_statuses.items() if s in UNHEALTHY_STATES}
