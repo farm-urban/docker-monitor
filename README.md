@@ -15,7 +15,7 @@ pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-
 
 ## Systemd:
 
-Edit `docker-monitor.env` and `docker-monitor.service` to set location of directory if not `/opt/docker-monitor`
+Edit `docker-monitor.service` to set location of directory if not `/opt/docker-monitor`
 
 ```
 sudo cp docker-monitor.service  /etc/systemd/system/docker-monitor.service

@@ -5,10 +5,9 @@ After=network.target network-online.target docker.service
 
 [Service]
 Type=oneshot
-EnvironmentFile=/opt/docker-monitor/docker-monitor.env
-WorkingDirectory=${DOCKER_MONITOR_DIR}
-ExecStart=${DOCKER_MONITOR_DIR}/venv/bin/python ${DOCKER_MONITOR_DIR}/monitor_and_alert.py
-StandardOutput=append:${DOCKER_MONITOR_DIR}/monitor.log
-StandardError=append:${DOCKER_MONITOR_DIR}/monitor.log
+WorkingDirectory=/opt/docker-monitor
+ExecStart=venv/bin/python monitor_and_alert.py
 User=fu
 Group=fu
+StandardOutput=journal
+StandardError=journal
