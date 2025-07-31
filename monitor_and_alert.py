@@ -1,116 +1,153 @@
+"""Docker container health monitoring script with Gmail alerting."""
+
 import os
+import sys
 import subprocess
 import datetime
 import base64
 import json
 import logging
+from subprocess import TimeoutExpired
 from email.mime.text import MIMEText
+
+import yaml
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === CONFIGURATION ===
-SERVER = "internal"
-CONTAINER_NAMES = ["sustainable_steps-front-1",
-                   "vaultwarden",
-                   "farm_wiki-nginx-1",
-                   "pihole"
-                  ]
-
-# Recipient
-ALERT_EMAIL = "jens@farmurban.co.uk"
-FROM_EMAIL = "jens@farmurban.co.uk"  # Appears in the "From" field
-
-# Service account config
-DELEGATED_USER = "jens@farmurban.co.uk"
-STATE_FILE = "container_status.json"
-SERVICE_ACCOUNT_FILE = "service_account.json"
+CONFIG_FILE = "config.yaml"
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
+
+def load_config():
+    """Load configuration from the YAML config file."""
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as file:
+            return yaml.safe_load(file)
+    except (FileNotFoundError, yaml.YAMLError) as err:
+        print(f"Failed to load config file '{CONFIG_FILE}': {err}")
+        sys.exit(1)
+
+
+CONFIG = load_config()
+
+SERVER = CONFIG.get("server", "unspecified")
+CONTAINER_NAMES = CONFIG.get("containers", [])
+ALERT_EMAIL = CONFIG.get("alert_email")
+FROM_EMAIL = CONFIG.get("from_email")
+DELEGATED_USER = CONFIG.get("delegated_user")
+STATE_FILE = CONFIG.get("state_file", "container_status.json")
+SERVICE_ACCOUNT_FILE = CONFIG.get("service_account_file", "service_account.json")
+DOCKER_TIMEOUT = CONFIG.get("docker_timeout", 10)
+
+# Internal state for unhealthy container statuses
+UNHEALTHY_STATES = ["unhealthy", "exited", "unknown"]
+
 # === LOGGING CONFIGURATION ===
-LOG_LEVEL = logging.INFO
-LOG_FILE = "docker_monitor.log"
-
-UNHEALTHY = ["unhealthy", "exited", "unknown"]
-
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        # log to stdout and let systemd handle logs
-        #logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()],
 )
 
+
 def authenticate_gmail_service():
+    """Authenticate with Gmail API using a service account."""
     creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=SCOPES
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES
     ).with_subject(DELEGATED_USER)
 
-    service = build("gmail", "v1", credentials=creds)
-    return service
+    return build("gmail", "v1", credentials=creds)
 
-def get_container_health(name):
+
+def get_container_health(container_name):
+    """Inspect Docker container and return its health status."""
     try:
         result = subprocess.check_output(
-            ["docker", "inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}", name],
-            stderr=subprocess.DEVNULL
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+                container_name,
+            ],
+            stderr=subprocess.DEVNULL,
+            timeout=DOCKER_TIMEOUT,
         )
         return result.decode().strip()
-    except subprocess.CalledProcessError as e:
-        logging.debug(f"Error checking container status: {e}")
+    except TimeoutExpired:
+        logging.error("Timeout while checking container '%s'", container_name)
+        return "timeout"
+    except subprocess.CalledProcessError as err:
+        logging.debug("Error checking container '%s': %s", container_name, err)
         return "unknown"
 
-def send_alert(service, container, status):
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[ALERT {SERVER}] '{container}' is {status}"
-    body = f"""
-The Docker container `{container}` is in an **{status.upper()}** state as of {now}.
 
-Please check the logs and take necessary action.
-"""
+def send_alert(service, container_name, status):
+    """Send an email alert about the container's unhealthy status."""
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    subject = f"[ALERT {SERVER}] '{container_name}' is {status}"
+    body = (
+        f"The Docker container `{container_name}` is in an **{status.upper()}** state as of {now}.\n\n"
+        "Please check the logs and take necessary action."
+    )
+
     message = MIMEText(body)
     message["to"] = ALERT_EMAIL
     message["from"] = FROM_EMAIL
     message["subject"] = subject
 
-    raw = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
+    raw_message = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
+    response = service.users().messages().send(userId="me", body=raw_message).execute()
 
-    response = service.users().messages().send(userId="me", body=raw).execute()
-    logging.info(f"[{now}] Alert sent for {container}: {status}")
-    logging.debug(f"Response from service: {response}")
+    logging.info("Alert sent for '%s' (status: %s)", container_name, status)
+    logging.debug("Gmail API response: %s", response)
+
 
 def load_statuses():
+    """Load previous container statuses from file."""
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
+        with open(STATE_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
     return {}
 
+
 def save_statuses(statuses):
-    with open(STATE_FILE, "w") as f:
-        json.dump(statuses, f, indent=2)
+    """Save container statuses to file."""
+    with open(STATE_FILE, "w", encoding="utf-8") as file:
+        json.dump(statuses, file, indent=2)
+
 
 def main():
+    """Main execution logic."""
+    if not CONTAINER_NAMES:
+        logging.error("No containers configured in %s", CONFIG_FILE)
+        return
+
     service = authenticate_gmail_service()
     last_statuses = load_statuses()
     new_statuses = {}
 
     for container in CONTAINER_NAMES:
         status = get_container_health(container)
-        logging.debug(f"Container '{container}' health status: {status}")
+        logging.debug("Container '%s' status: %s", container, status)
+
         last_status = last_statuses.get(container, "unavailable")
 
-        # Trigger alert only on transition to unhealthy
-        if status in UNHEALTHY and last_status not in UNHEALTHY:
+        if status in UNHEALTHY_STATES and last_status not in UNHEALTHY_STATES:
             send_alert(service, container, status)
         else:
-            logging.debug(f"No alert sent: '{container}' status unchanged ({status})")
+            logging.debug("No alert sent: '%s' unchanged (%s)", container, status)
 
         new_statuses[container] = status
 
     save_statuses(new_statuses)
 
+    unhealthy_now = {c: s for c, s in new_statuses.items() if s in UNHEALTHY_STATES}
+    logging.info(
+        "Monitoring complete. %d container(s) in unhealthy state.", len(unhealthy_now)
+    )
+
+
 if __name__ == "__main__":
     main()
-
