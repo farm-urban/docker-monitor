@@ -10,7 +10,7 @@ Script to send alerts when containers aren't healthy
 sudo apt-get install  python3-venv
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib pyaml
 ```
 
 ## Systemd:
@@ -39,7 +39,9 @@ sudo systemctl start docker-monitor.timer
     - Click "Done" (no permissions required)
 5.  Edit service account
     - Keys -> Add Key -> Create new Key
+    - Download the key file as service_account.json
     - Details - get Client Id
 6.  Add domain wide delegation
     - https://admin.google.com/ac/owl/domainwidedelegation
     - add Client Id from 5
+7. change mode of service_account.json to 600

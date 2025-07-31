@@ -41,7 +41,7 @@ SERVICE_ACCOUNT_FILE = CONFIG.get("service_account_file", "service_account.json"
 DOCKER_TIMEOUT = CONFIG.get("docker_timeout", 10)
 
 # Internal state for unhealthy container statuses
-UNHEALTHY_STATES = ["unhealthy", "exited", "unknown"]
+UNHEALTHY_STATES = ["unhealthy", "exited", "timeout", "unknown"]
 
 # === LOGGING CONFIGURATION ===
 logging.basicConfig(
