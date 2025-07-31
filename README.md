@@ -1,5 +1,9 @@
 Script to send alerts when containers aren't healthy
 
+**NB:** Useful alias for checking ps:
+
+`alias docker-ps=docker container ls --format "table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Status}}"`
+
 ## Python infrastructure
 
 ```
