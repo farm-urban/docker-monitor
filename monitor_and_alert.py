@@ -83,12 +83,12 @@ def get_container_health(container_name):
         return "unknown"
 
 
-def send_alert(service, container_name, status):
-    """Send an email alert about the container's unhealthy status."""
+def send_alert(service, container_name, status, alert_type="ALERT"):
+    """Send an email alert about the container's status."""
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[ALERT {SERVER}] '{container_name}' is {status}"
+    subject = f"[{alert_type} {SERVER}] '{container_name}' is {status}"
     body = (
-        f"The Docker container `{container_name}` is in an **{status.upper()}** state as of {now}.\n\n"
+        f"The Docker container `{container_name}` is in a **{status.upper()}** state as of {now}.\n\n"
         "Please check the logs and take necessary action."
     )
 
@@ -132,10 +132,26 @@ def main():
         status = get_container_health(container)
         logging.debug("Container '%s' status: %s", container, status)
 
-        last_status = last_statuses.get(container, "unavailable")
+        last_status = last_statuses.get(container)
 
-        if status in UNHEALTHY_STATES and last_status not in UNHEALTHY_STATES:
-            send_alert(service, container, status)
+        # First-time startup: unknown previous status
+        if last_status is None:
+            if status in UNHEALTHY_STATES:
+                send_alert(service, container, status, alert_type="ALERT")
+            else:
+                logging.info(
+                    "Startup: '%s' is healthy (%s), no alert sent.", container, status
+                )
+
+        # Status changed
+        elif status != last_status:
+            if status in UNHEALTHY_STATES:
+                send_alert(service, container, status, alert_type="ALERT")
+            elif last_status in UNHEALTHY_STATES:
+                send_alert(service, container, status, alert_type="RECOVERY")
+            else:
+                send_alert(service, container, status, alert_type="STATE CHANGE")
+
         else:
             logging.debug("No alert sent: '%s' unchanged (%s)", container, status)
 
