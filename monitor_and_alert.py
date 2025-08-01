@@ -1,31 +1,30 @@
-"""Docker container health monitoring script with Gmail alerting."""
-
 import os
 import sys
-import subprocess
+import time
 import datetime
 import base64
 import json
 import logging
-from subprocess import TimeoutExpired
 from email.mime.text import MIMEText
+from typing import Dict, List
 
 import yaml
+import docker
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === CONFIGURATION ===
-CONFIG_FILE = "config.yaml"
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+DEFAULT_CONFIG_PATH = "config.yaml"
+CONFIG_FILE = os.getenv("CONFIG_PATH", DEFAULT_CONFIG_PATH)
 
 
-def load_config():
-    """Load configuration from the YAML config file."""
+def load_config() -> Dict:
+    """Load configuration from a YAML file."""
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as file:
             return yaml.safe_load(file)
     except (FileNotFoundError, yaml.YAMLError) as err:
-        print(f"Failed to load config file '{CONFIG_FILE}': {err}")
+        logging.error("Failed to load config file '%s': %s", CONFIG_FILE, err)
         sys.exit(1)
 
 
@@ -37,13 +36,13 @@ ALERT_EMAIL = CONFIG.get("alert_email")
 FROM_EMAIL = CONFIG.get("from_email")
 DELEGATED_USER = CONFIG.get("delegated_user")
 STATE_FILE = CONFIG.get("state_file", "container_status.json")
-SERVICE_ACCOUNT_FILE = CONFIG.get("service_account_file", "service_account.json")
-DOCKER_TIMEOUT = CONFIG.get("docker_timeout", 10)
+SERVICE_ACCOUNT_FILE = os.getenv(
+    "CREDENTIALS_PATH", CONFIG.get("service_account_file", "service_account.json")
+)
+POLL_INTERVAL = CONFIG.get("poll_interval", 300)  # seconds
 
-# Internal state for unhealthy container statuses
 UNHEALTHY_STATES = ["unhealthy", "exited", "timeout", "unknown"]
 
-# === LOGGING CONFIGURATION ===
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -52,51 +51,43 @@ logging.basicConfig(
 
 
 def authenticate_gmail_service():
-    """Authenticate with Gmail API using a service account."""
+    """Authenticate and return a Gmail API service object."""
     creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/gmail.send"]
     ).with_subject(DELEGATED_USER)
-
     return build("gmail", "v1", credentials=creds)
 
 
-def get_container_health(container_name):
-    """Inspect Docker container and return its health status."""
+def get_container_health(container_name: str) -> str:
+    """Get the health status of a Docker container."""
     try:
-        result = subprocess.check_output(
-            [
-                "docker",
-                "inspect",
-                "--format",
-                "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-                container_name,
-            ],
-            stderr=subprocess.DEVNULL,
-            timeout=DOCKER_TIMEOUT,
-        )
-        return result.decode().strip()
-    except TimeoutExpired:
-        logging.error("Timeout while checking container '%s'", container_name)
-        return "timeout"
-    except subprocess.CalledProcessError as err:
-        logging.debug("Error checking container '%s': %s", container_name, err)
+        client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+        container = client.containers.get(container_name)
+        health = container.attrs["State"].get("Health", {})
+        if "Status" in health:
+            return health["Status"]
+        return container.attrs["State"]["Status"]
+    except docker.errors.NotFound:
+        logging.error("Container '%s' not found", container_name)
+        return "unknown"
+    except docker.errors.DockerException as err:
+        logging.error("Docker error for '%s': %s", container_name, err)
         return "unknown"
 
 
-def send_alerts_grouped(service, alerts):
-    """Send a single email with all container alerts."""
+def send_alerts_grouped(service, alerts: List[Dict]) -> None:
+    """Send a grouped alert email with container state changes."""
     if not alerts:
         return
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     subject = f"[DOCKER MONITOR {SERVER}] {len(alerts)} container(s) changed state"
 
-    body_lines = [f"State changes detected on server `{SERVER}` as of {now}:\n"]
-
+    body_lines = [f"State changes detected on server `{SERVER}` as of {now}:", ""]
     for alert in alerts:
-        line = f"- {alert['type']}: `{alert['container']}` is now **{alert['status'].upper()}**"
-        body_lines.append(line)
-
+        body_lines.append(
+            f"- {alert['type']}: `{alert['container']}` is now **{alert['status'].upper()}**"
+        )
     body_lines.append("\nPlease check logs or containers as needed.")
     body = "\n".join(body_lines)
 
@@ -112,28 +103,22 @@ def send_alerts_grouped(service, alerts):
     logging.debug("Gmail API response: %s", response)
 
 
-def load_statuses():
-    """Load previous container statuses from file."""
+def load_statuses() -> Dict:
+    """Load container statuses from a local file."""
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
     return {}
 
 
-def save_statuses(statuses):
-    """Save container statuses to file."""
+def save_statuses(statuses: Dict) -> None:
+    """Save container statuses to a local file."""
     with open(STATE_FILE, "w", encoding="utf-8") as file:
         json.dump(statuses, file, indent=2)
 
 
-def main():
-    """Main execution logic."""
-    if not CONTAINER_NAMES:
-        logging.error("No containers configured in %s", CONFIG_FILE)
-        return
-
-    service = authenticate_gmail_service()
-    last_statuses = load_statuses()
+def poll_once(service, last_statuses: Dict) -> Dict:
+    """Poll container statuses and return updated values."""
     new_statuses = {}
     alerts = []
 
@@ -152,32 +137,52 @@ def main():
                 logging.info(
                     "Startup: '%s' is healthy (%s), no alert sent.", container, status
                 )
-
         elif status != last_status:
             if status in UNHEALTHY_STATES:
-                alert_type = "ALERT"
+                alerts.append(
+                    {"container": container, "status": status, "type": "ALERT"}
+                )
             elif last_status in UNHEALTHY_STATES:
-                alert_type = "RECOVERY"
+                alerts.append(
+                    {"container": container, "status": status, "type": "RECOVERY"}
+                )
             else:
-                alert_type = "STATE CHANGE"
-
-            alerts.append(
-                {"container": container, "status": status, "type": alert_type}
-            )
+                alerts.append(
+                    {"container": container, "status": status, "type": "STATE CHANGE"}
+                )
         else:
             logging.debug("No alert sent: '%s' unchanged (%s)", container, status)
 
         new_statuses[container] = status
 
-    # Send a single grouped email
     send_alerts_grouped(service, alerts)
-    save_statuses(new_statuses)
+    return new_statuses
 
-    unhealthy_now = {c: s for c, s in new_statuses.items() if s in UNHEALTHY_STATES}
-    logging.info(
-        "Monitoring complete. %d container(s) in unhealthy state.", len(unhealthy_now)
-    )
+
+def run_monitor() -> None:
+    """Run the main monitoring loop."""
+    if not CONTAINER_NAMES:
+        logging.error("No containers configured in %s", CONFIG_FILE)
+        return
+
+    service = authenticate_gmail_service()
+    last_statuses = load_statuses()
+
+    while True:
+        logging.info("Polling Docker container statuses...")
+        last_statuses = poll_once(service, last_statuses)
+        save_statuses(last_statuses)
+
+        unhealthy_now = {
+            c: s for c, s in last_statuses.items() if s in UNHEALTHY_STATES
+        }
+        logging.info(
+            "Monitoring complete. %d container(s) in unhealthy state.",
+            len(unhealthy_now),
+        )
+
+        time.sleep(POLL_INTERVAL)
 
 
 if __name__ == "__main__":
-    main()
+    run_monitor()
