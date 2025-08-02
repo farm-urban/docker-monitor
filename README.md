@@ -8,7 +8,7 @@ This is a self-contained monitoring solution packaged as a Docker container. It 
 
 ## 📦 Features
 
-- Monitors container health using `docker inspect`
+- Monitors container health
 - Sends grouped email alerts via Gmail API (service account based)
 - Configurable poll interval
 - Lightweight and portable
@@ -85,12 +85,7 @@ docker compose logs -f
 
 ## ⚙️ Configuration Options
 
-All config is read from `config.yaml`. Alternatively, override paths using environment variables:
-
-| Env Var            | Default Path                |
-| ------------------ | --------------------------- |
-| `CONFIG_PATH`      | `/app/config.yaml`          |
-| `CREDENTIALS_PATH` | `/app/service_account.json` |
+All config is read from `config.yaml`.
 
 ---
 
