@@ -28,8 +28,8 @@ This is a self-contained monitoring solution packaged as a Docker container. It 
 ### 1. Clone and configure:
 
 ```bash
-git clone https://github.com/your-org/container-monitor.git
-cd container-monitor
+git clone https://github.com/your-org/docker-monitor.git
+cd docker-monitor
 ```
 
 ### 2. Create your `config.yaml`:
@@ -44,11 +44,10 @@ containers:
 alert_email: "you@yourdomain.com"
 from_email: "you@yourdomain.com"
 delegated_user: "you@yourdomain.com"
-service_account_file: "service_account.json"
 poll_interval: 300
 ```
 
-## 📬 Google Email Setup
+### 3. Google Email Setup
 
 1.  Create new project in Admin console
 2.  Goto "Enabled APIs and services" -> "+Enable API and services"
@@ -59,28 +58,18 @@ poll_interval: 300
     - Click "Done" (no permissions required)
 5.  Edit service account
     - Keys -> Add Key -> Create new Key
-    - Download the key file as service_account.json
+    - Download the key file as service_account.json into the docker-monitor directory and chmod to 600
     - Details - get Client Id
 6.  Add domain wide delegation
     - https://admin.google.com/ac/owl/domainwidedelegation
     - add Client Id from 5
-7.  change mode of service_account.json to 600
-
-### 3. Place your Gmail `service_account.json` in the root folder.
 
 ---
 
-### 4. Build and Run with Docker Compose:
+### 4. Start the container
 
 ```bash
-docker compose build
-docker compose up -d
-```
-
-### 5. View logs:
-
-```bash
-docker compose logs -f
+./start.sh
 ```
 
 ---
@@ -93,10 +82,13 @@ All config is read from `config.yaml`.
 
 ## 🛠️ Development
 
-Make edits to `monitor_and_alert.py` and rebuild:
+Run locally with `./run_dev.sh`
+
+To test within the container, make edits to `monitor_and_alert.py` and rebuild:
 
 ```bash
 docker compose build
+docker compose up
 ```
 
 ---
