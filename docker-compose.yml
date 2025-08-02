@@ -1,7 +1,6 @@
 services:
   container-monitor:
-    # image: container-monitor:latest
-    image: ghcr.io/farm-urban/container-monitor:latest
+    image: ghcr.io/farm-urban/docker-monitor:latest
     build: .
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

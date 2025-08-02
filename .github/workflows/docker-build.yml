@@ -31,5 +31,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/farm-urban/container-monitor:latest
-            ghcr.io/farm-urban/container-monitor:${{ github.sha }}
+            ghcr.io/farm-urban/docker-monitor:latest
+            ghcr.io/farm-urban/docker-monitor:${{ github.sha }}
