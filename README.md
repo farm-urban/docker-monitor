@@ -32,7 +32,9 @@ git clone https://github.com/your-org/container-monitor.git
 cd container-monitor
 ```
 
-### 2. Update your `config.yaml`:
+### 2. Create your `config.yaml`:
+
+Copy `config.yaml.template` to `config.yaml`.
 
 ```yaml
 server: "your-server-name"
