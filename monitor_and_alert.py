@@ -16,7 +16,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === CONFIGURATION ===
-CONFIG_FILE = "/app/config.yaml"
+CONFIG_FILE = "./config.yaml"
 
 
 def load_config() -> Dict:
@@ -38,11 +38,11 @@ FROM_EMAIL = CONFIG.get("from_email")
 DELEGATED_USER = CONFIG.get("delegated_user")
 POLL_INTERVAL = CONFIG.get("poll_interval", 300)  # seconds
 LOG_LEVEL = CONFIG.get("log_level", "INFO").upper()
-STATE_DIR = "/app/status"
+STATE_DIR = "./status"
 STATE_FILE = os.path.join(STATE_DIR, "container_status.json")
 UNHEALTHY_STATES = ["unhealthy", "exited", "timeout", "unknown"]
 
-SERVICE_ACCOUNT_FILE = "/app/service_account.json"
+SERVICE_ACCOUNT_FILE = "./service_account.json"
 if not os.path.isfile(SERVICE_ACCOUNT_FILE):
     raise FileNotFoundError(
         f"Service account file '{SERVICE_ACCOUNT_FILE}' not found. "
