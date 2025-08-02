@@ -1,8 +1,0 @@
-[Service]
-WorkingDirectory=/opt/docker-monitor
-ExecStart=/opt/docker-monitor/venv/bin/python monitor_and_alert.py
-User=fu
-Group=fu
-StandardOutput=journal
-StandardError=journal
-Restart=always

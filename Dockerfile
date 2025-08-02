@@ -20,9 +20,5 @@ RUN pip install --no-cache-dir \
 # Copy in the monitoring script
 COPY monitor_and_alert.py ./
 
-# Allow runtime configuration via mounted config.yaml and credentials
-ENV CONFIG_PATH=/app/config.yaml
-ENV CREDENTIALS_PATH=/app/service_account.json
-
 # Default command (can be overridden)
 CMD ["python", "monitor_and_alert.py"]

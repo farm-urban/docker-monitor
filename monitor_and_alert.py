@@ -1,3 +1,5 @@
+"""Script to montior Docker containers on host and alert on status,"""
+
 import os
 import sys
 import time
@@ -14,8 +16,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === CONFIGURATION ===
-DEFAULT_CONFIG_PATH = "config.yaml"
-CONFIG_FILE = os.getenv("CONFIG_PATH", DEFAULT_CONFIG_PATH)
+CONFIG_FILE = "/app/config.yaml"
 
 
 def load_config() -> Dict:
@@ -35,13 +36,18 @@ CONTAINER_NAMES = CONFIG.get("containers", [])
 ALERT_EMAIL = CONFIG.get("alert_email")
 FROM_EMAIL = CONFIG.get("from_email")
 DELEGATED_USER = CONFIG.get("delegated_user")
-STATE_FILE = CONFIG.get("state_file", "container_status.json")
-SERVICE_ACCOUNT_FILE = os.getenv(
-    "CREDENTIALS_PATH", CONFIG.get("service_account_file", "service_account.json")
-)
 POLL_INTERVAL = CONFIG.get("poll_interval", 300)  # seconds
-
+STATE_DIR = "/app/status"
+STATE_FILE = os.path.join(STATE_DIR, "container_status.json")
 UNHEALTHY_STATES = ["unhealthy", "exited", "timeout", "unknown"]
+
+SERVICE_ACCOUNT_FILE = "/app/service_account.json"
+if not os.path.isfile(SERVICE_ACCOUNT_FILE):
+    raise FileNotFoundError(
+        f"Service account file '{SERVICE_ACCOUNT_FILE}' not found. "
+        "Please ensure it is mounted correctly."
+    )
+
 
 logging.basicConfig(
     level=logging.INFO,

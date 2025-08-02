@@ -1,34 +1,52 @@
-Script to send alerts when containers aren't healthy
+# 🚨 Container Monitor
 
-**NB:** Useful alias for checking ps:
+Monitor Docker containers by name and receive Gmail alerts when container health or state changes.
 
-`alias docker-ps=docker container ls --format "table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Status}}"`
+This is a self-contained monitoring solution packaged as a Docker container. It requires no changes to the existing containers being monitored.
 
-## Python infrastructure
+---
 
+## 📦 Features
+
+- Monitors container health using `docker inspect`
+- Sends grouped email alerts via Gmail API (service account based)
+- Configurable poll interval
+- Lightweight and portable
+
+---
+
+## 🧱 Requirements
+
+- Docker Engine installed
+- Gmail service account with domain-wide delegation
+- Containers must have healthchecks or stable state transitions (running/exited/etc.)
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone and configure:
+
+```bash
+git clone https://github.com/your-org/container-monitor.git
+cd container-monitor
 ```
-sudo apt-get install  python3-venv
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib pyaml
+
+### 2. Update your `config.yaml`:
+
+```yaml
+server: "your-server-name"
+containers:
+  - nginx
+  - vaultwarden
+alert_email: "you@yourdomain.com"
+from_email: "you@yourdomain.com"
+delegated_user: "you@yourdomain.com"
+service_account_file: "service_account.json"
+poll_interval: 300
 ```
 
-## Systemd:
-
-Edit `docker-monitor.service` to set location of directory if not `/opt/docker-monitor`
-
-```
-sudo cp docker-monitor.service  /etc/systemd/system/docker-monitor.service
-sudo cp docker-monitor.timer /etc/systemd/system/docker-monitor.timer
-
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-
-sudo systemctl enable docker-monitor.timer
-sudo systemctl start docker-monitor.timer
-```
-
-## On google workspace
+## 📬 Google Email Setup
 
 1.  Create new project in Admin console
 2.  Goto "Enabled APIs and services" -> "+Enable API and services"
@@ -44,4 +62,44 @@ sudo systemctl start docker-monitor.timer
 6.  Add domain wide delegation
     - https://admin.google.com/ac/owl/domainwidedelegation
     - add Client Id from 5
-7. change mode of service_account.json to 600
+7.  change mode of service_account.json to 600
+
+### 3. Place your Gmail `service_account.json` in the root folder.
+
+---
+
+### 4. Build and Run with Docker Compose:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+### 5. View logs:
+
+```bash
+docker compose logs -f
+```
+
+---
+
+## ⚙️ Configuration Options
+
+All config is read from `config.yaml`. Alternatively, override paths using environment variables:
+
+| Env Var            | Default Path                |
+| ------------------ | --------------------------- |
+| `CONFIG_PATH`      | `/app/config.yaml`          |
+| `CREDENTIALS_PATH` | `/app/service_account.json` |
+
+---
+
+## 🛠️ Development
+
+Make edits to `monitor_and_alert.py` and rebuild:
+
+```bash
+docker compose build
+```
+
+---
