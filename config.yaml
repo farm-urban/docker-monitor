@@ -1,4 +1,4 @@
-server: "internal"
+# server: "internal"
 
 containers:
   - sustainable_steps-front-1
@@ -11,3 +11,4 @@ from_email: "jens@farmurban.co.uk"
 delegated_user: "jens@farmurban.co.uk"
 
 poll_interval: 300 # seconds
+log_level: "info"

@@ -31,12 +31,13 @@ def load_config() -> Dict:
 
 CONFIG = load_config()
 
-SERVER = CONFIG.get("server", "unspecified")
+SERVER = CONFIG.get("server", os.getenv("DOCKER_HOSTNAME", "unspecified-host"))
 CONTAINER_NAMES = CONFIG.get("containers", [])
 ALERT_EMAIL = CONFIG.get("alert_email")
 FROM_EMAIL = CONFIG.get("from_email")
 DELEGATED_USER = CONFIG.get("delegated_user")
 POLL_INTERVAL = CONFIG.get("poll_interval", 300)  # seconds
+LOG_LEVEL = CONFIG.get("log_level", "INFO").upper()
 STATE_DIR = "/app/status"
 STATE_FILE = os.path.join(STATE_DIR, "container_status.json")
 UNHEALTHY_STATES = ["unhealthy", "exited", "timeout", "unknown"]
@@ -48,9 +49,8 @@ if not os.path.isfile(SERVICE_ACCOUNT_FILE):
         "Please ensure it is mounted correctly."
     )
 
-
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL),
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()],
 )
